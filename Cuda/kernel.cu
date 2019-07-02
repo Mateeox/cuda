@@ -5,25 +5,26 @@
 #include <stdio.h>
 #include <fstream>
 
-cudaError_t addWithCuda(unsigned int* p_red, unsigned int* p_green, unsigned int* p_blue, unsigned int size);
+cudaError_t addWithCuda(unsigned char* p_red, unsigned char* p_green, unsigned char* p_blue, unsigned int size);
 int checkSize(char* filename);
-void appendHeader(char* filename, char* origin);
-void readBMP(char* filename, unsigned int* p_red, unsigned int* p_green, unsigned int* p_blue);
-void writeBMP(char* filename, char* origin, unsigned int* p_red, unsigned int* p_green, unsigned int* p_blue);
-void get(unsigned int* color_from, unsigned int* color_to, int start, int end);
-void set(unsigned int* color_from, unsigned int* color_to, int start, int end);
+unsigned char* appendHeader(char* origin);
+void readBMP(char* filename, unsigned char* p_red, unsigned char* p_green, unsigned char* p_blue);
+void writeBMP(char* filename, char* origin, unsigned char* p_red, unsigned char* p_green, unsigned char* p_blue);
+void get(unsigned char* color_from, unsigned char* color_to, int start, int end);
+void set(unsigned char* color_from, unsigned char* color_to, int start, int end);
 
-__global__ void addKernel(unsigned int* p_red, unsigned int* p_green, unsigned int* p_blue)
+__global__ void addKernel(unsigned char* p_red, unsigned char* p_green, unsigned char* p_blue)
 {
 	int i = threadIdx.x;
-	int avg = (p_red[i] * 0.2126 + p_green[i] * 0.7152 + p_blue[i] * 0.0722) / 3;
+	char avg = (p_red[i] * 0.2126 + p_green[i] * 0.7152 + p_blue[i] * 0.0722);// (p_red[i] + p_green[i] + p_blue[i])/3;//(p_red[i] * 0.2126 + p_green[i] * 0.7152 + p_blue[i] * 0.0722);
+	/*int ratio = 0;
 	if (avg > 128)
 	{
-		avg -= (avg - 128) * 0.5;
+		avg -= (avg - 128) * 0.3;
 	}
 	else {
-		avg += (128 - avg) * 0.5;
-	}
+		avg += (128 - avg) * 0.3;
+	}*/
 	p_red[i] = avg;
 	p_green[i] = avg;
 	p_blue[i] = avg;
@@ -31,36 +32,37 @@ __global__ void addKernel(unsigned int* p_red, unsigned int* p_green, unsigned i
 
 int main()
 {
+	int Block = 1024;
 	int size = checkSize("C:\\Users\\mateu\\source\\repos\\cuda\\x64\\Debug\\test.bmp");
-	unsigned int* red = new unsigned int[size];
-	unsigned int* green = new unsigned int[size];
-	unsigned int* blue = new unsigned int[size];
+	unsigned char* red = new unsigned char[size];
+	unsigned char* green = new unsigned char[size];
+	unsigned char* blue = new unsigned char[size];
 	readBMP("C:\\Users\\mateu\\source\\repos\\cuda\\x64\\Debug\\test.bmp", red, green, blue);
 	int current_size = size;
-	cudaError_t cudaStatus;
+	cudaError_t cudaStatus = cudaSuccess;
 	while (current_size > 0)
 	{
-		if (current_size >= 900)
+		if (current_size >= Block)
 		{
-			unsigned int* temp_red = new unsigned int[900];
-			unsigned int* temp_green = new unsigned int[900];
-			unsigned int* temp_blue = new unsigned int[900];
-			get(red, temp_red, size - current_size, size - current_size + 900);
-			get(green, temp_green, size - current_size, size - current_size + 900);
-			get(blue, temp_blue, size - current_size, size - current_size + 900);
-			cudaStatus = addWithCuda(temp_red, temp_green, temp_blue, 900);
-			set(temp_red, red, size - current_size, size - current_size + 900);
-			set(temp_green, green, size - current_size, size - current_size + 900);
-			set(temp_blue, blue, size - current_size, size - current_size + 900);
-			current_size -= 900;
+			unsigned char* temp_red = new unsigned char[Block];
+			unsigned char* temp_green = new unsigned char[Block];
+			unsigned char* temp_blue = new unsigned char[Block];
+			get(red, temp_red, size - current_size, size - current_size + Block);
+			get(green, temp_green, size - current_size, size - current_size + Block);
+			get(blue, temp_blue, size - current_size, size - current_size + Block);
+			//cudaStatus = addWithCuda(temp_red, temp_green, temp_blue, Block);
+			set(temp_red, red, size - current_size, size - current_size + Block);
+			set(temp_green, green, size - current_size, size - current_size + Block);
+			set(temp_blue, blue, size - current_size, size - current_size + Block);
+			current_size -= Block;
 		} else {
-			unsigned int* temp_red = new unsigned int[current_size];
-			unsigned int* temp_green = new unsigned int[current_size];
-			unsigned int* temp_blue = new unsigned int[current_size];
+			unsigned char* temp_red = new unsigned char[current_size];
+			unsigned char* temp_green = new unsigned char[current_size];
+			unsigned char* temp_blue = new unsigned char[current_size];
 			get(red, temp_red, size - current_size, size);
 			get(green, temp_green, size - current_size, size);
 			get(blue, temp_blue, size - current_size, size);
-			cudaStatus = addWithCuda(temp_red, temp_green, temp_blue, current_size);
+			//cudaStatus = addWithCuda(temp_red, temp_green, temp_blue, current_size);
 			set(temp_red, red, size - current_size, size);
 			set(temp_green, green, size - current_size, size);
 			set(temp_blue, blue, size - current_size, size);
@@ -85,24 +87,22 @@ int main()
     return 0;
 }
 
-void get(unsigned int* color_from, unsigned int* color_to, int start, int end)
+void get(unsigned char* color_from, unsigned char* color_to, int start, int end)
 {
 	int index = 0;
 	for (int i = start; i < end; i++)
 	{
 		color_to[index] = color_from[i];
-		i++;
 		index++;
 	}
 }
 
-void set(unsigned int* color_from, unsigned int* color_to, int start, int end)
+void set(unsigned char* color_from, unsigned char* color_to, int start, int end)
 {
-	int index = start;
-	for (int i = 0; i < end - start; i++)
+	int index = 0;
+	for (int i = start; i < end; i++)
 	{
-		color_to[index] = color_from[i];
-		i++;
+		color_to[i] = color_from[index];
 		index++;
 	}
 }
@@ -121,18 +121,16 @@ int checkSize(char* filename)
 	return size;
 }
 
-void appendHeader(char* filename, char* origin)
+unsigned char* appendHeader(char* origin)
 {
 	FILE* f = fopen(origin, "rb");
 	unsigned char* info = new unsigned char [54];
 	fread(info, sizeof(unsigned char), 54, f); // read the 54-byte header
 	fclose(f);
-	f = fopen(filename, "wb");
-	fwrite(info, sizeof(unsigned char), 54, f);
-	fclose(f);
+	return info;
 }
 
-void readBMP(char* filename, unsigned int* p_red, unsigned int* p_green, unsigned int* p_blue)
+void readBMP(char* filename, unsigned char* p_red, unsigned char* p_green, unsigned char* p_blue)
 {
 	int i;
 	FILE* f = fopen(filename, "rb");
@@ -152,22 +150,19 @@ void readBMP(char* filename, unsigned int* p_red, unsigned int* p_green, unsigne
 
 	for (i = 0; i < size; i += 3)
 	{
-		int red = data[i];
-		int green = data[i + 1];
-		int blue = data[i + 2];
-		p_red[index] = red;
-		p_green[index] = green;
-		p_blue[index] = blue;
+		p_red[index] = data[i];
+		p_green[index] = data[i + 1];
+		p_blue[index] = data[i + 2];
 		index++;
 	}
 }
 
-void writeBMP(char* filename, char* originfile, unsigned int* p_red, unsigned int* p_green, unsigned int* p_blue)
+void writeBMP(char* filename, char* originfile, unsigned char* p_red, unsigned char* p_green, unsigned char* p_blue)
 {
 	int i;
-	appendHeader(filename, originfile);
+	unsigned char* info = appendHeader(originfile);
 
-	FILE* f = fopen(filename, "a+b");
+	FILE* f = fopen(filename, "w+b");
 
 	int size = 3 * checkSize(originfile);
 	unsigned char* data = new unsigned char[size];
@@ -181,17 +176,17 @@ void writeBMP(char* filename, char* originfile, unsigned int* p_red, unsigned in
 		data[i + 2] = p_blue[index];
 		index++;
 	}
-
+	fwrite(info, sizeof(unsigned char), 54, f);
 	fwrite(data, sizeof(unsigned char), size, f); // read the rest of the data at once
 	fclose(f);
 }
 
 // Helper function for using CUDA to add vectors in parallel.
-cudaError_t addWithCuda(unsigned int* p_red, unsigned int* p_green, unsigned int* p_blue, unsigned int size)
+cudaError_t addWithCuda(unsigned char* p_red, unsigned char* p_green, unsigned char* p_blue, unsigned int size)
 {
-	unsigned int *dev_a = 0;
-	unsigned int *dev_b = 0;
-	unsigned int *dev_c = 0;
+	unsigned char *dev_a = 0;
+	unsigned char *dev_b = 0;
+	unsigned char *dev_c = 0;
     cudaError_t cudaStatus;
 
     // Choose which GPU to run on, change this on a multi-GPU system.
@@ -201,39 +196,39 @@ cudaError_t addWithCuda(unsigned int* p_red, unsigned int* p_green, unsigned int
         goto Error;
     }
 
-    cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(unsigned int));
+    cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(unsigned char));
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMalloc failed!");
         goto Error;
     }
 
-    cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(unsigned int));
+    cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(unsigned char));
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMalloc failed!");
         goto Error;
     }
 
 	// Allocate GPU buffers for three vectors (two input, one output)    .
-	cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(unsigned int));
+	cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(unsigned char));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
 		goto Error;
 	}
 
     // Copy input vectors from host memory to GPU buffers.
-    cudaStatus = cudaMemcpy(dev_a, p_red, size * sizeof(unsigned int), cudaMemcpyHostToDevice);
+    cudaStatus = cudaMemcpy(dev_a, p_red, size * sizeof(unsigned char), cudaMemcpyHostToDevice);
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMemcpy failed!");
         goto Error;
     }
 
-    cudaStatus = cudaMemcpy(dev_b, p_green, size * sizeof(unsigned int), cudaMemcpyHostToDevice);
+    cudaStatus = cudaMemcpy(dev_b, p_green, size * sizeof(unsigned char), cudaMemcpyHostToDevice);
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMemcpy failed!");
         goto Error;
     }
 
-	cudaStatus = cudaMemcpy(dev_c, p_blue, size * sizeof(unsigned int), cudaMemcpyHostToDevice);
+	cudaStatus = cudaMemcpy(dev_c, p_blue, size * sizeof(unsigned char), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
@@ -257,20 +252,20 @@ cudaError_t addWithCuda(unsigned int* p_red, unsigned int* p_green, unsigned int
         goto Error;
     }
 
-	cudaStatus = cudaMemcpy(p_red, dev_a, size * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+	cudaStatus = cudaMemcpy(p_red, dev_a, size * sizeof(unsigned char), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
 	}
 
-	cudaStatus = cudaMemcpy(p_green, dev_b, size * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+	cudaStatus = cudaMemcpy(p_green, dev_b, size * sizeof(unsigned char), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
 	}
 
     // Copy output vector from GPU buffer to host memory.
-    cudaStatus = cudaMemcpy(p_blue, dev_c, size * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+    cudaStatus = cudaMemcpy(p_blue, dev_c, size * sizeof(unsigned char), cudaMemcpyDeviceToHost);
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMemcpy failed!");
         goto Error;
